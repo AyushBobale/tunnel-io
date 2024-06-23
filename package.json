@@ -1,0 +1,19 @@
+{
+  "name": "@ayush/tunnel-io",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "test": "jest --watchAll --verbose",
+    "dev": "nodemon --watch src --ext js,json,ts --exec tsc --declaration",
+    "build": "tsc --declaration",
+    "package": "npm run build && npm pack"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "nodemon": "^3.1.4",
+    "ts-node": "^10.9.2"
+  }
+}
