@@ -14,7 +14,7 @@
     "build": "tsc --declaration",
     "package": "npm run build && npm pack"
   },
-  "author": "",
+  "author": "ayushbobale",
   "license": "BSD-2-Clause",
   "devDependencies": {
     "nodemon": "^3.1.4",

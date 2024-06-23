@@ -1,5 +1,13 @@
+export type MessageType = {
+  senderId: string;
+  senderName?: string;
+  message: string;
+  channel: string;
+  time: Date;
+};
+
 export type ChannelEventsType = {
-  onmessage: (e: MessageEvent<any>, channel: string) => void;
+  onmessage: (e: MessageType[]) => void;
   onopen: (e: Event, channel: string) => void;
   onclose: (e: Event, channel: string) => void;
 };
@@ -11,6 +19,7 @@ export type CBsType = {
 
 export type TunnelIOArgs = {
   isInitiator?: boolean;
+  name?: string;
   logLevel?: "DEBUG" | "PROD";
 };
 
@@ -19,17 +28,22 @@ export type TunnelHookArgs = {
 };
 
 export class TunnelIO {
-  public DEFAULT_CHANNEL = "DEFAULT_CHANNEL";
-  public LOG_LEVEL: "DEBUG" | "PROD" = "DEBUG";
+  private DEFAULT_CHANNEL = "DEFAULT_CHANNEL";
+  private id: string;
+  private name: string = "noname";
+  private LOG_LEVEL: "DEBUG" | "PROD" = "DEBUG";
   private isInitiator: boolean = true;
-  public peerConnection: RTCPeerConnection;
-  public dataChannels: { [key: string]: RTCDataChannel } = {};
-  private messages: string[] = [];
+  private peerConnection: RTCPeerConnection;
+  private dataChannels: { [key: string]: RTCDataChannel } = {};
+  private messages: MessageType[] = [];
 
   constructor(args: TunnelIOArgs & TunnelHookArgs) {
-    const { isInitiator, logLevel, cbs } = args;
+    const { isInitiator, logLevel, cbs, name } = args;
     const { onicecandidate, channelEvents } = cbs || {};
 
+    const array = new Uint32Array(1);
+    this.id = window.crypto.getRandomValues(array)[0]?.toString();
+    this.name = name || this.name;
     this.LOG_LEVEL = logLevel || this.LOG_LEVEL;
     this.isInitiator = isInitiator || false;
     this.peerConnection = new RTCPeerConnection();
@@ -61,9 +75,10 @@ export class TunnelIO {
     channelEvents?: ChannelEventsType
   ) {
     this.dataChannels[channel].onmessage = (e) => {
-      this.messages.push(e.data);
+      this.messages.push(JSON.parse(e.data));
       this._console(`message [${channel}] : ${e.data}`);
-      channelEvents?.onmessage(e, channel);
+      this._console(this.messages);
+      channelEvents?.onmessage(this.messages);
     };
     this.dataChannels[channel].onopen = (e) => {
       this._console(`channel-open : ${channel}`);
@@ -111,11 +126,22 @@ export class TunnelIO {
     return this.peerConnection.localDescription;
   }
 
-  public sendMessage(msg: string, channel?: string) {
+  public sendMessage(msg: string, channel?: string): MessageType[] | undefined {
     if (channel && !this.dataChannels[channel]) {
       console.error(`No such channel created : ${channel}`);
       return;
     }
-    this.dataChannels[channel || this.DEFAULT_CHANNEL].send(msg);
+    const msgObj = {
+      message: msg,
+      senderId: this.id,
+      senderName: this.name,
+      channel: channel || this.DEFAULT_CHANNEL,
+      time: new Date(),
+    };
+    this.messages.push(msgObj);
+    this.dataChannels[channel || this.DEFAULT_CHANNEL].send(
+      JSON.stringify(msgObj)
+    );
+    return this.messages;
   }
 }
