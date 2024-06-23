@@ -1,5 +1,5 @@
 {
-  "name": "@ayush/tunnel-io",
+  "name": "@ayushbobale/tunnel-io",
   "version": "1.0.0",
   "description": "",
   "main": "dist/index.js",
@@ -10,7 +10,6 @@
     "email": "bobaleayush@gmail.com"
   },
   "scripts": {
-    "test": "jest --watchAll --verbose",
     "dev": "nodemon --watch src --ext js,json,ts --exec tsc --declaration",
     "build": "tsc --declaration",
     "package": "npm run build && npm pack"
