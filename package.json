@@ -4,6 +4,11 @@
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "homepage": "https://github.com/AyushBobale/tunnel-io/blob/main/README.md",
+  "bugs": {
+    "url": "https://github.com/AyushBobale/tunnel-io/issues",
+    "email": "bobaleayush@gmail.com"
+  },
   "scripts": {
     "test": "jest --watchAll --verbose",
     "dev": "nodemon --watch src --ext js,json,ts --exec tsc --declaration",
@@ -11,7 +16,7 @@
     "package": "npm run build && npm pack"
   },
   "author": "",
-  "license": "ISC",
+  "license": "BSD-2-Clause",
   "devDependencies": {
     "nodemon": "^3.1.4",
     "ts-node": "^10.9.2"
