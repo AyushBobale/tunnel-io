@@ -14,6 +14,7 @@ export type ChannelEventsType = {
 
 export type CBsType = {
   onicecandidate: (sdp: RTCSessionDescription | null) => void;
+  ontrack: (stream: MediaStream) => void;
   channelEvents: ChannelEventsType;
 };
 
@@ -28,35 +29,50 @@ export type TunnelHookArgs = {
 };
 
 export class TunnelIO {
-  private DEFAULT_CHANNEL = "DEFAULT_CHANNEL";
+  private LOG_LEVEL: "DEBUG" | "PROD" = "DEBUG";
   private id: string;
   private name: string = "noname";
-  private LOG_LEVEL: "DEBUG" | "PROD" = "DEBUG";
   private isInitiator: boolean = true;
+  private CHANNELS = { DEFAULT_MSG_CHANNEL: "DEFAULT_MSG_CHANNEL" };
+  private streams: {
+    local: { video: MediaStream | null; screen: MediaStream | null };
+    remote: { video: MediaStream | null; screen: MediaStream | null };
+  } = {
+    local: { video: null, screen: null },
+    remote: { video: null, screen: null },
+  };
   private peerConnection: RTCPeerConnection;
   private dataChannels: { [key: string]: RTCDataChannel } = {};
   private messages: MessageType[] = [];
 
   constructor(args: TunnelIOArgs & TunnelHookArgs) {
     const { isInitiator, logLevel, cbs, name } = args;
-    const { onicecandidate, channelEvents } = cbs || {};
+    const { onicecandidate, channelEvents, ontrack } = cbs || {};
 
-    const array = new Uint32Array(1);
-    this.id = window.crypto.getRandomValues(array)[0]?.toString();
+    this.id = window.crypto.randomUUID();
     this.name = name || this.name;
     this.LOG_LEVEL = logLevel || this.LOG_LEVEL;
     this.isInitiator = isInitiator || false;
     this.peerConnection = new RTCPeerConnection();
+
     this.peerConnection.onicecandidate = (e) => {
       this._console("new ice-candidates");
       this._console(JSON.stringify(this.peerConnection.localDescription));
       onicecandidate && onicecandidate(this.peerConnection.localDescription);
     };
 
+    this.peerConnection.ontrack = (e) => {
+      this._console("Tracks detected");
+      this.streams.remote.video = e.streams[0];
+      ontrack && ontrack(e.streams[0]);
+    };
+
     if (this.isInitiator) {
-      this.dataChannels[this.DEFAULT_CHANNEL] =
-        this.peerConnection.createDataChannel(this.DEFAULT_CHANNEL);
-      this._bindChannelEvents(this.DEFAULT_CHANNEL, channelEvents);
+      this.dataChannels[this.CHANNELS.DEFAULT_MSG_CHANNEL] =
+        this.peerConnection.createDataChannel(
+          this.CHANNELS.DEFAULT_MSG_CHANNEL
+        );
+      this._bindChannelEvents(this.CHANNELS.DEFAULT_MSG_CHANNEL, channelEvents);
 
       // creating SDP
       this.peerConnection
@@ -64,8 +80,11 @@ export class TunnelIO {
         .then((o) => this.peerConnection.setLocalDescription(o));
     } else {
       this.peerConnection.ondatachannel = (e) => {
-        this.dataChannels[this.DEFAULT_CHANNEL] = e.channel;
-        this._bindChannelEvents(this.DEFAULT_CHANNEL, channelEvents);
+        this.dataChannels[this.CHANNELS.DEFAULT_MSG_CHANNEL] = e.channel;
+        this._bindChannelEvents(
+          this.CHANNELS.DEFAULT_MSG_CHANNEL,
+          channelEvents
+        );
       };
     }
   }
@@ -135,13 +154,31 @@ export class TunnelIO {
       message: msg,
       senderId: this.id,
       senderName: this.name,
-      channel: channel || this.DEFAULT_CHANNEL,
+      channel: channel || this.CHANNELS.DEFAULT_MSG_CHANNEL,
       time: new Date(),
     };
     this.messages.push(msgObj);
-    this.dataChannels[channel || this.DEFAULT_CHANNEL].send(
+    this.dataChannels[channel || this.CHANNELS.DEFAULT_MSG_CHANNEL].send(
       JSON.stringify(msgObj)
     );
     return this.messages;
+  }
+
+  public async getMediaDevicesVideo(): Promise<MediaStream> {
+    // renegotiate via webrtc itself
+
+    const videoStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      // audio: true,
+    });
+    this.streams.local.video = videoStream;
+    this.streams.local.video.getTracks().forEach((track) => {
+      console.log("Track", track);
+      this.peerConnection.addTrack(
+        track,
+        this.streams.local.video || videoStream
+      );
+    });
+    return videoStream;
   }
 }
