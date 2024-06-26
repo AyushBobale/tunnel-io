@@ -1,3 +1,16 @@
+type FilesMeta = {
+  name: string;
+  size: number;
+  type: string;
+  lastModified: number;
+  progress: { send: number; receive: number };
+};
+
+export type FileShareProgess = (args: {
+  error: any;
+  files: FilesMeta[];
+}) => void;
+
 export type MessageType = {
   senderId: string;
   senderName?: string;
@@ -33,7 +46,23 @@ export class TunnelIO {
   private id: string;
   private name: string = "noname";
   private isInitiator: boolean = true;
-  private CHANNELS = { DEFAULT_MSG_CHANNEL: "DEFAULT_MSG_CHANNEL" };
+  private fileTransferProtocol: {
+    receivedSize: number;
+    receivingFiles: FileList | null;
+    isProcessing: boolean;
+    cmds: "filemeta" | "filedata" | "noop";
+    filesMeta: (FilesMeta & { buffer: [] })[];
+  } = {
+    receivedSize: 0,
+    receivingFiles: null,
+    isProcessing: false,
+    cmds: "noop",
+    filesMeta: [],
+  };
+  private CHANNELS = {
+    DEFAULT_MSG_CHANNEL: "DEFAULT_MSG_CHANNEL",
+    FILE_TRANSFER: "FILE_TRANSFER",
+  };
   private streams: {
     local: { video: MediaStream | null; screen: MediaStream | null };
     remote: { video: MediaStream | null; screen: MediaStream | null };
@@ -44,6 +73,7 @@ export class TunnelIO {
   private peerConnection: RTCPeerConnection;
   private dataChannels: { [key: string]: RTCDataChannel } = {};
   private messages: MessageType[] = [];
+  private channelEvents: ChannelEventsType | undefined;
 
   constructor(args: TunnelIOArgs & TunnelHookArgs) {
     const { isInitiator, logLevel, cbs, name } = args;
@@ -53,6 +83,7 @@ export class TunnelIO {
     this.name = name || this.name;
     this.LOG_LEVEL = logLevel || this.LOG_LEVEL;
     this.isInitiator = isInitiator || false;
+    this.channelEvents = channelEvents;
     this.peerConnection = new RTCPeerConnection();
 
     this.peerConnection.onicecandidate = (e) => {
@@ -72,7 +103,10 @@ export class TunnelIO {
         this.peerConnection.createDataChannel(
           this.CHANNELS.DEFAULT_MSG_CHANNEL
         );
-      this._bindChannelEvents(this.CHANNELS.DEFAULT_MSG_CHANNEL, channelEvents);
+      this.dataChannels[this.CHANNELS.FILE_TRANSFER] =
+        this.peerConnection.createDataChannel(this.CHANNELS.FILE_TRANSFER);
+      this._bindChannelEvents(this.CHANNELS.DEFAULT_MSG_CHANNEL);
+      this._bindChannelEvents(this.CHANNELS.FILE_TRANSFER);
 
       // creating SDP
       this.peerConnection
@@ -80,39 +114,88 @@ export class TunnelIO {
         .then((o) => this.peerConnection.setLocalDescription(o));
     } else {
       this.peerConnection.ondatachannel = (e) => {
-        this.dataChannels[this.CHANNELS.DEFAULT_MSG_CHANNEL] = e.channel;
-        this._bindChannelEvents(
-          this.CHANNELS.DEFAULT_MSG_CHANNEL,
-          channelEvents
-        );
+        this.dataChannels[e.channel.label] = e.channel;
+        this._bindChannelEvents(e.channel.label);
       };
     }
   }
 
-  private _bindChannelEvents(
-    channel: string,
-    channelEvents?: ChannelEventsType
-  ) {
+  private _handleMessage(data: any) {
+    this.messages.push(JSON.parse(data));
+    this._console(this.messages);
+  }
+
+  private _handleFileTransfer(data: any) {
+    // there needs to be progress cb here as well
+    this.fileTransferProtocol.isProcessing = true;
+    const dataObj: any = JSON.parse(data);
+    switch (dataObj.cmd) {
+      case "filemeta":
+        this._console("File meta data", dataObj.data);
+        this.fileTransferProtocol.filesMeta = dataObj.data?.map((elm: any) => ({
+          ...elm,
+          buffer: [],
+        }));
+        break;
+      case "filedata":
+        const fileData = this.fileTransferProtocol.filesMeta.find(
+          (file) => file.name === dataObj.filename
+        );
+        const buffer = this._base64ToArrayBuffer(dataObj.data);
+        if (fileData) {
+          // @ts-ignore
+          fileData.buffer.push(buffer);
+          fileData.progress.receive += buffer.byteLength;
+          if (fileData.size === fileData.progress.receive) {
+            const newBlob = new Blob(fileData.buffer, { type: fileData.type });
+            const link = document.createElement("a");
+            link.download = fileData.name;
+            link.href = window.URL.createObjectURL(newBlob);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }
+        }
+        console.log({ fileData });
+        this._console(this._base64ToArrayBuffer(dataObj.data));
+      default:
+        this._console("un-handeled filetransfer cmd", dataObj.cmd);
+        break;
+    }
+  }
+
+  private _bindChannelEvents(channel: string) {
     this.dataChannels[channel].onmessage = (e) => {
-      this.messages.push(JSON.parse(e.data));
-      this._console(`message [${channel}] : ${e.data}`);
-      this._console(this.messages);
-      channelEvents?.onmessage(this.messages);
+      this._console(`onmessage [${channel}] : `, e.data);
+      switch (channel) {
+        case this.CHANNELS.DEFAULT_MSG_CHANNEL:
+          this._handleMessage(e.data);
+          this.channelEvents?.onmessage(this.messages);
+          break;
+
+        case this.CHANNELS.FILE_TRANSFER:
+          this._handleFileTransfer(e.data);
+          break;
+
+        default:
+          this._console("un-handeled channel", channel);
+          break;
+      }
     };
     this.dataChannels[channel].onopen = (e) => {
       this._console(`channel-open : ${channel}`);
-      channelEvents?.onopen(e, channel);
+      this.channelEvents?.onopen(e, channel);
     };
     this.dataChannels[channel].onclose = (e) => {
       this._console(`channel-close : ${channel}`);
-      channelEvents?.onclose(e, channel);
+      this.channelEvents?.onclose(e, channel);
     };
   }
 
-  private _console(data: any) {
+  private _console(...args: any[]) {
     switch (this.LOG_LEVEL) {
       case "DEBUG":
-        console.log(data);
+        console.log(...args);
         break;
       case "PROD":
         console.warn("Debug level : " + this.LOG_LEVEL);
@@ -180,5 +263,102 @@ export class TunnelIO {
       );
     });
     return videoStream;
+  }
+
+  private _arrayBufferToBase64(buffer: ArrayBuffer): string {
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+  }
+
+  private _base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binary_string = window.atob(base64);
+    const len = binary_string.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
+  private _createFileMeta(files: FileList): FilesMeta[] {
+    const fileMetaArray = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fileMeta: FilesMeta = {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: file.lastModified,
+        progress: { send: 0, receive: 0 },
+      };
+      fileMetaArray.push(fileMeta);
+    }
+
+    return fileMetaArray;
+  }
+
+  public sendFiles(files: FileList, progressCB?: FileShareProgess) {
+    // prep send data about files
+    this.dataChannels[this.CHANNELS.FILE_TRANSFER].send(
+      JSON.stringify({ cmd: "filemeta", data: this._createFileMeta(files) })
+    );
+
+    // const file = files[0];
+    for (let file of files) {
+      // for now just sending the first file can send multiple files
+      this._console(
+        `File is ${[file.name, file.size, file.type, file.lastModified].join(
+          " "
+        )}`
+      );
+
+      const chunkSize = 16384;
+      let offset = 0;
+
+      const fileReader = new FileReader();
+
+      fileReader.addEventListener("error", (error) => {
+        this._console("Error reading file:", error);
+        progressCB && progressCB({ error, files: [] });
+      });
+      fileReader.addEventListener("abort", (event) => {
+        this._console("File reading aborted:", event);
+        progressCB && progressCB({ error: event, files: [] });
+      });
+
+      fileReader.addEventListener("load", (e: ProgressEvent<FileReader>) => {
+        this._console("FileRead.onload ", e);
+        if (e.target && e.target.result instanceof ArrayBuffer) {
+          let packet = {
+            cmd: "filedata",
+            filename: file.name,
+            data: this._arrayBufferToBase64(e.target.result),
+          };
+          this.dataChannels[this.CHANNELS.FILE_TRANSFER].send(
+            JSON.stringify(packet)
+          );
+          offset += e.target.result.byteLength;
+          // sendProgress.value = offset;
+          // AY Set progress here for sender
+          if (offset < file.size) {
+            readSlice(offset);
+          }
+        }
+      });
+
+      const readSlice = (offset: number) => {
+        this._console("Slice Number: " + offset);
+        const slice = file.slice(offset, offset + chunkSize);
+        fileReader.readAsArrayBuffer(slice);
+      };
+
+      readSlice(0);
+    }
   }
 }
