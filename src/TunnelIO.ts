@@ -31,6 +31,7 @@ export type CBsType = {
   onicecandidate: (sdp: RTCSessionDescription | null) => void;
   ontrack: (stream: MediaStream) => void;
   channelEvents: ChannelEventsType;
+  fileShareProgress: FileShareProgessFunc;
 };
 
 export type TunnelIOArgs = {
@@ -44,6 +45,12 @@ export type TunnelHookArgs = {
 };
 
 export class TunnelIO {
+  private CONFIG = {
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun.services.mozilla.com" },
+    ],
+  };
   private LOG_LEVEL: "DEBUG" | "PROD" = "DEBUG";
   private MAX_QUEUE_SIZE = 1024 * 1024;
   private id: string;
@@ -62,6 +69,7 @@ export class TunnelIO {
     cmds: "noop",
     filesMeta: {},
   };
+  private fileShareProgress: FileShareProgessFunc | undefined;
   private CHANNELS = {
     DEFAULT_MSG_CHANNEL: "DEFAULT_MSG_CHANNEL",
     FILE_TRANSFER: "FILE_TRANSFER",
@@ -80,14 +88,16 @@ export class TunnelIO {
 
   constructor(args: TunnelIOArgs & TunnelHookArgs) {
     const { isInitiator, logLevel, cbs, name } = args;
-    const { onicecandidate, channelEvents, ontrack } = cbs || {};
+    const { onicecandidate, channelEvents, ontrack, fileShareProgress } =
+      cbs || {};
 
     this.id = window.crypto.randomUUID();
     this.name = name || this.name;
     this.LOG_LEVEL = logLevel || this.LOG_LEVEL;
     this.isInitiator = isInitiator || false;
     this.channelEvents = channelEvents;
-    this.peerConnection = new RTCPeerConnection();
+    this.fileShareProgress = fileShareProgress;
+    this.peerConnection = new RTCPeerConnection(this.CONFIG);
 
     this.peerConnection.onicecandidate = (e) => {
       this._console("new ice-candidates");
@@ -139,6 +149,7 @@ export class TunnelIO {
         this.fileTransferProtocol.filesMeta = dataObj.data;
         break;
       case "filedata":
+        this._console("filedata recevied");
         const fileData = this.fileTransferProtocol.filesMeta[dataObj.filename];
         const buffer = this._base64ToArrayBuffer(dataObj.data);
         if (fileData) {
@@ -155,8 +166,21 @@ export class TunnelIO {
             document.body.removeChild(link);
           }
         }
-        console.log({ fileData });
-        this._console(this._base64ToArrayBuffer(dataObj.data));
+        this.fileShareProgress &&
+          this.fileShareProgress({
+            files: Object.keys(this.fileTransferProtocol.filesMeta).reduce(
+              (acc: { [key: string]: FilesMeta & { buffer: [] } }, key) => {
+                acc[key] = {
+                  ...this.fileTransferProtocol.filesMeta[key],
+                  buffer: [],
+                };
+                return acc;
+              },
+              {}
+            ),
+          });
+        // console.log({ fileData });
+        // this._console(this._base64ToArrayBuffer(dataObj.data));
         break;
       default:
         this._console("un-handeled filetransfer cmd", dataObj.cmd);
@@ -305,7 +329,7 @@ export class TunnelIO {
     return fileMetaObj;
   }
 
-  public sendFiles(files: FileList, progressCB?: FileShareProgessFunc) {
+  public sendFiles(files: FileList) {
     // prep send data about files
     const filesMeta = this._createFileMeta(files);
     this.dataChannels[this.CHANNELS.FILE_TRANSFER].send(
@@ -329,11 +353,12 @@ export class TunnelIO {
 
       fileReader.addEventListener("error", (error) => {
         this._console("Error reading file:", error);
-        progressCB && progressCB({ error, files: {} });
+        this.fileShareProgress && this.fileShareProgress({ error, files: {} });
       });
       fileReader.addEventListener("abort", (event) => {
         this._console("File reading aborted:", event);
-        progressCB && progressCB({ error: event, files: {} });
+        this.fileShareProgress &&
+          this.fileShareProgress({ error: event, files: {} });
       });
 
       fileReader.addEventListener("load", (e: ProgressEvent<FileReader>) => {
@@ -346,8 +371,10 @@ export class TunnelIO {
           };
           this.fileTransferProtocol.filesMeta[file.name].progress.send +=
             e.target.result.byteLength;
-          progressCB &&
-            progressCB({ files: this.fileTransferProtocol.filesMeta });
+          this.fileShareProgress &&
+            this.fileShareProgress({
+              files: this.fileTransferProtocol.filesMeta,
+            });
           // if (
           //   this.dataChannels[this.CHANNELS.FILE_TRANSFER].bufferedAmount <
           //   this.MAX_QUEUE_SIZE
