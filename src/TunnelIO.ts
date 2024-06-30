@@ -6,10 +6,12 @@ type FilesMeta = {
   progress: { send: number; receive: number };
 };
 
-export type FileShareProgess = (args: {
-  error: any;
-  files: FilesMeta[];
-}) => void;
+export type FileShareProgessArgs = {
+  error?: any;
+  files: { [key: string]: FilesMeta };
+};
+
+export type FileShareProgessFunc = (args: FileShareProgessArgs) => void;
 
 export type MessageType = {
   senderId: string;
@@ -43,6 +45,7 @@ export type TunnelHookArgs = {
 
 export class TunnelIO {
   private LOG_LEVEL: "DEBUG" | "PROD" = "DEBUG";
+  private MAX_QUEUE_SIZE = 1024 * 1024;
   private id: string;
   private name: string = "noname";
   private isInitiator: boolean = true;
@@ -51,13 +54,13 @@ export class TunnelIO {
     receivingFiles: FileList | null;
     isProcessing: boolean;
     cmds: "filemeta" | "filedata" | "noop";
-    filesMeta: (FilesMeta & { buffer: [] })[];
+    filesMeta: { [key: string]: FilesMeta & { buffer: [] } };
   } = {
     receivedSize: 0,
     receivingFiles: null,
     isProcessing: false,
     cmds: "noop",
-    filesMeta: [],
+    filesMeta: {},
   };
   private CHANNELS = {
     DEFAULT_MSG_CHANNEL: "DEFAULT_MSG_CHANNEL",
@@ -127,20 +130,16 @@ export class TunnelIO {
 
   private _handleFileTransfer(data: any) {
     // there needs to be progress cb here as well
-    this.fileTransferProtocol.isProcessing = true;
+    // this.fileTransferProtocol.isProcessing = true;
+    // AY make use of this
     const dataObj: any = JSON.parse(data);
     switch (dataObj.cmd) {
       case "filemeta":
         this._console("File meta data", dataObj.data);
-        this.fileTransferProtocol.filesMeta = dataObj.data?.map((elm: any) => ({
-          ...elm,
-          buffer: [],
-        }));
+        this.fileTransferProtocol.filesMeta = dataObj.data;
         break;
       case "filedata":
-        const fileData = this.fileTransferProtocol.filesMeta.find(
-          (file) => file.name === dataObj.filename
-        );
+        const fileData = this.fileTransferProtocol.filesMeta[dataObj.filename];
         const buffer = this._base64ToArrayBuffer(dataObj.data);
         if (fileData) {
           // @ts-ignore
@@ -158,6 +157,7 @@ export class TunnelIO {
         }
         console.log({ fileData });
         this._console(this._base64ToArrayBuffer(dataObj.data));
+        break;
       default:
         this._console("un-handeled filetransfer cmd", dataObj.cmd);
         break;
@@ -285,8 +285,10 @@ export class TunnelIO {
     return bytes.buffer;
   }
 
-  private _createFileMeta(files: FileList): FilesMeta[] {
-    const fileMetaArray = [];
+  private _createFileMeta(files: FileList): {
+    [key: string]: FilesMeta & { buffer: [] };
+  } {
+    const fileMetaObj: { [key: string]: FilesMeta & { buffer: [] } } = {};
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -297,17 +299,19 @@ export class TunnelIO {
         lastModified: file.lastModified,
         progress: { send: 0, receive: 0 },
       };
-      fileMetaArray.push(fileMeta);
+      fileMetaObj[file.name] = { ...fileMeta, buffer: [] };
     }
 
-    return fileMetaArray;
+    return fileMetaObj;
   }
 
-  public sendFiles(files: FileList, progressCB?: FileShareProgess) {
+  public sendFiles(files: FileList, progressCB?: FileShareProgessFunc) {
     // prep send data about files
+    const filesMeta = this._createFileMeta(files);
     this.dataChannels[this.CHANNELS.FILE_TRANSFER].send(
-      JSON.stringify({ cmd: "filemeta", data: this._createFileMeta(files) })
+      JSON.stringify({ cmd: "filemeta", data: filesMeta })
     );
+    this.fileTransferProtocol.filesMeta = filesMeta;
 
     // const file = files[0];
     for (let file of files) {
@@ -318,18 +322,18 @@ export class TunnelIO {
         )}`
       );
 
-      const chunkSize = 16384;
+      const chunkSize = 8192;
       let offset = 0;
 
       const fileReader = new FileReader();
 
       fileReader.addEventListener("error", (error) => {
         this._console("Error reading file:", error);
-        progressCB && progressCB({ error, files: [] });
+        progressCB && progressCB({ error, files: {} });
       });
       fileReader.addEventListener("abort", (event) => {
         this._console("File reading aborted:", event);
-        progressCB && progressCB({ error: event, files: [] });
+        progressCB && progressCB({ error: event, files: {} });
       });
 
       fileReader.addEventListener("load", (e: ProgressEvent<FileReader>) => {
@@ -340,9 +344,18 @@ export class TunnelIO {
             filename: file.name,
             data: this._arrayBufferToBase64(e.target.result),
           };
+          this.fileTransferProtocol.filesMeta[file.name].progress.send +=
+            e.target.result.byteLength;
+          progressCB &&
+            progressCB({ files: this.fileTransferProtocol.filesMeta });
+          // if (
+          //   this.dataChannels[this.CHANNELS.FILE_TRANSFER].bufferedAmount <
+          //   this.MAX_QUEUE_SIZE
+          // ) {
           this.dataChannels[this.CHANNELS.FILE_TRANSFER].send(
             JSON.stringify(packet)
           );
+          // }
           offset += e.target.result.byteLength;
           // sendProgress.value = offset;
           // AY Set progress here for sender

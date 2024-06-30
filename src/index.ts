@@ -5,6 +5,8 @@ import {
   TunnelIOArgs,
   TunnelHookArgs,
   MessageType,
+  FileShareProgessArgs,
+  FileShareProgessFunc,
 } from "./TunnelIO";
 
 export { TunnelIO };
@@ -14,4 +16,6 @@ export type {
   TunnelIOArgs,
   TunnelHookArgs,
   MessageType,
+  FileShareProgessArgs,
+  FileShareProgessFunc,
 };
