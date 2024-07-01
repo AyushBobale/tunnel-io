@@ -1,1 +1,340 @@
-!function(e,t){"object"==typeof exports&&"undefined"!=typeof module?module.exports=t():"function"==typeof define&&define.amd?define(t):(e="undefined"!=typeof globalThis?globalThis:e||self).TunnelIO=t()}(this,(function(){"use strict";var e="undefined"!=typeof globalThis?globalThis:"undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof self?self:{};function t(e){return e&&e.__esModule&&Object.prototype.hasOwnProperty.call(e,"default")?e.default:e}var s={},n={},i=e&&e.__awaiter||function(e,t,s,n){return new(s||(s=Promise))((function(i,o){function a(e){try{l(n.next(e))}catch(e){o(e)}}function r(e){try{l(n.throw(e))}catch(e){o(e)}}function l(e){var t;e.done?i(e.value):(t=e.value,t instanceof s?t:new s((function(e){e(t)}))).then(a,r)}l((n=n.apply(e,t||[])).next())}))};Object.defineProperty(n,"__esModule",{value:!0}),n.TunnelIO=void 0;return n.TunnelIO=class{constructor(e){this.CONFIG={iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"stun:stun.services.mozilla.com"}]},this.LOG_LEVEL="DEBUG",this.MAX_QUEUE_SIZE=1048576,this.name="noname",this.isInitiator=!0,this.fileTransferProtocol={receivedSize:0,receivingFiles:null,isProcessing:!1,cmds:"noop",filesMeta:{}},this.CHANNELS={DEFAULT_MSG_CHANNEL:"DEFAULT_MSG_CHANNEL",FILE_TRANSFER:"FILE_TRANSFER"},this.streams={local:{video:null,screen:null},remote:{video:null,screen:null}},this.dataChannels={},this.messages=[];const{isInitiator:t,logLevel:s,cbs:n,name:i}=e,{onicecandidate:o,channelEvents:a,ontrack:r,fileShareProgress:l}=n||{};this.id=window.crypto.randomUUID(),this.name=i||this.name,this.LOG_LEVEL=s||this.LOG_LEVEL,this.isInitiator=t||!1,this.channelEvents=a,this.fileShareProgress=l,this.peerConnection=new RTCPeerConnection(this.CONFIG),this.peerConnection.onicecandidate=e=>{this._console("new ice-candidates"),this._console(JSON.stringify(this.peerConnection.localDescription)),o&&o(this.peerConnection.localDescription)},this.peerConnection.ontrack=e=>{this._console("Tracks detected"),this.streams.remote.video=e.streams[0],r&&r(e.streams[0])},this.isInitiator?(this.dataChannels[this.CHANNELS.DEFAULT_MSG_CHANNEL]=this.peerConnection.createDataChannel(this.CHANNELS.DEFAULT_MSG_CHANNEL),this.dataChannels[this.CHANNELS.FILE_TRANSFER]=this.peerConnection.createDataChannel(this.CHANNELS.FILE_TRANSFER),this._bindChannelEvents(this.CHANNELS.DEFAULT_MSG_CHANNEL),this._bindChannelEvents(this.CHANNELS.FILE_TRANSFER),this.peerConnection.createOffer().then((e=>this.peerConnection.setLocalDescription(e)))):this.peerConnection.ondatachannel=e=>{this.dataChannels[e.channel.label]=e.channel,this._bindChannelEvents(e.channel.label)}}_handleMessage(e){this.messages.push(JSON.parse(e)),this._console(this.messages)}_handleFileTransfer(e){const t=JSON.parse(e);switch(t.cmd){case"filemeta":this._console("File meta data",t.data),this.fileTransferProtocol.filesMeta=t.data;break;case"filedata":this._console("filedata recevied");const e=this.fileTransferProtocol.filesMeta[t.filename],s=this._base64ToArrayBuffer(t.data);if(e&&(e.buffer.push(s),e.progress.receive+=s.byteLength,e.size===e.progress.receive)){const t=new Blob(e.buffer,{type:e.type}),s=document.createElement("a");s.download=e.name,s.href=window.URL.createObjectURL(t),document.body.appendChild(s),s.click(),document.body.removeChild(s)}this.fileShareProgress&&this.fileShareProgress({files:Object.keys(this.fileTransferProtocol.filesMeta).reduce(((e,t)=>(e[t]=Object.assign(Object.assign({},this.fileTransferProtocol.filesMeta[t]),{buffer:[]}),e)),{})});break;default:this._console("un-handeled filetransfer cmd",t.cmd)}}_bindChannelEvents(e){this.dataChannels[e].onmessage=t=>{var s;switch(this._console(`onmessage [${e}] : `,t.data),e){case this.CHANNELS.DEFAULT_MSG_CHANNEL:this._handleMessage(t.data),null===(s=this.channelEvents)||void 0===s||s.onmessage(this.messages);break;case this.CHANNELS.FILE_TRANSFER:this._handleFileTransfer(t.data);break;default:this._console("un-handeled channel",e)}},this.dataChannels[e].onopen=t=>{var s;this._console(`channel-open : ${e}`),null===(s=this.channelEvents)||void 0===s||s.onopen(t,e)},this.dataChannels[e].onclose=t=>{var s;this._console(`channel-close : ${e}`),null===(s=this.channelEvents)||void 0===s||s.onclose(t,e)}}_console(...e){if("DEBUG"===this.LOG_LEVEL)console.log(...e);else console.warn("Debug level : "+this.LOG_LEVEL)}setPeer(e){return i(this,void 0,void 0,(function*(){if(yield this.peerConnection.setRemoteDescription(e),this._console("set-remote-desc"),!this.isInitiator){this._console("self not-initiator creating answer");const e=yield this.createAnswer();return this._console("answer created"),e}return null}))}createAnswer(){return i(this,void 0,void 0,(function*(){const e=yield this.peerConnection.createAnswer();return yield this.peerConnection.setLocalDescription(e),this.peerConnection.localDescription}))}sendMessage(e,t){if(t&&!this.dataChannels[t])return void console.error(`No such channel created : ${t}`);const s={message:e,senderId:this.id,senderName:this.name,channel:t||this.CHANNELS.DEFAULT_MSG_CHANNEL,time:new Date};return this.messages.push(s),this.dataChannels[t||this.CHANNELS.DEFAULT_MSG_CHANNEL].send(JSON.stringify(s)),this.messages}getMediaDevicesVideo(){return i(this,void 0,void 0,(function*(){const e=yield navigator.mediaDevices.getUserMedia({video:!0});return this.streams.local.video=e,this.streams.local.video.getTracks().forEach((t=>{console.log("Track",t),this.peerConnection.addTrack(t,this.streams.local.video||e)})),e}))}_arrayBufferToBase64(e){let t="";const s=new Uint8Array(e),n=s.byteLength;for(let e=0;e<n;e++)t+=String.fromCharCode(s[e]);return window.btoa(t)}_base64ToArrayBuffer(e){const t=window.atob(e),s=t.length,n=new Uint8Array(s);for(let e=0;e<s;e++)n[e]=t.charCodeAt(e);return n.buffer}_createFileMeta(e){const t={};for(let s=0;s<e.length;s++){const n=e[s],i={name:n.name,size:n.size,type:n.type,lastModified:n.lastModified,progress:{send:0,receive:0}};t[n.name]=Object.assign(Object.assign({},i),{buffer:[]})}return t}sendFiles(e){const t=this._createFileMeta(e);this.dataChannels[this.CHANNELS.FILE_TRANSFER].send(JSON.stringify({cmd:"filemeta",data:t})),this.fileTransferProtocol.filesMeta=t;for(let t of e){this._console(`File is ${[t.name,t.size,t.type,t.lastModified].join(" ")}`);const e=8192;let s=0;const n=new FileReader;n.addEventListener("error",(e=>{this._console("Error reading file:",e),this.fileShareProgress&&this.fileShareProgress({error:e,files:{}})})),n.addEventListener("abort",(e=>{this._console("File reading aborted:",e),this.fileShareProgress&&this.fileShareProgress({error:e,files:{}})})),n.addEventListener("load",(e=>{if(this._console("FileRead.onload ",e),e.target&&e.target.result instanceof ArrayBuffer){let n={cmd:"filedata",filename:t.name,data:this._arrayBufferToBase64(e.target.result)};this.fileTransferProtocol.filesMeta[t.name].progress.send+=e.target.result.byteLength,this.fileShareProgress&&this.fileShareProgress({files:this.fileTransferProtocol.filesMeta}),this.dataChannels[this.CHANNELS.FILE_TRANSFER].send(JSON.stringify(n)),s+=e.target.result.byteLength,s<t.size&&i(s)}}));const i=s=>{this._console("Slice Number: "+s);const i=t.slice(s,s+e);n.readAsArrayBuffer(i)};i(0)}}},function(e){Object.defineProperty(e,"__esModule",{value:!0}),e.TunnelIO=void 0;const t=n;Object.defineProperty(e,"TunnelIO",{enumerable:!0,get:function(){return t.TunnelIO}})}(s),t(s)}));
+(function (global, factory) {
+	typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+	typeof define === 'function' && define.amd ? define(factory) :
+	(global = typeof globalThis !== 'undefined' ? globalThis : global || self, global.TunnelIO = factory());
+})(this, (function () { 'use strict';
+
+	var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+
+	function getDefaultExportFromCjs (x) {
+		return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
+	}
+
+	var src = {};
+
+	var TunnelIO$1 = {};
+
+	var __awaiter = (commonjsGlobal && commonjsGlobal.__awaiter) || function (thisArg, _arguments, P, generator) {
+	    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+	    return new (P || (P = Promise))(function (resolve, reject) {
+	        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+	        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+	        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+	        step((generator = generator.apply(thisArg, _arguments || [])).next());
+	    });
+	};
+	Object.defineProperty(TunnelIO$1, "__esModule", { value: true });
+	TunnelIO$1.TunnelIO = void 0;
+	class TunnelIO {
+	    constructor(args) {
+	        this.CONFIG = {
+	            iceServers: [
+	                { urls: "stun:stun.l.google.com:19302" },
+	                { urls: "stun:stun.services.mozilla.com" },
+	            ],
+	        };
+	        this.LOG_LEVEL = "DEBUG";
+	        this.MAX_QUEUE_SIZE = 1024 * 1024;
+	        this.name = "noname";
+	        this.isInitiator = true;
+	        this.fileTransferProtocol = {
+	            receivedSize: 0,
+	            receivingFiles: null,
+	            isProcessing: false,
+	            cmds: "noop",
+	            filesMeta: {},
+	        };
+	        this.CHANNELS = {
+	            DEFAULT_MSG_CHANNEL: "DEFAULT_MSG_CHANNEL",
+	            FILE_TRANSFER: "FILE_TRANSFER",
+	        };
+	        this.streams = {
+	            local: { video: null, screen: null },
+	            remote: { video: null, screen: null },
+	        };
+	        this.dataChannels = {};
+	        this.messages = [];
+	        const { isInitiator, logLevel, cbs, name } = args;
+	        const { onicecandidate, channelEvents, ontrack, fileShareProgress } = cbs || {};
+	        this.id = window.crypto.randomUUID();
+	        this.name = name || this.name;
+	        this.LOG_LEVEL = logLevel || this.LOG_LEVEL;
+	        this.isInitiator = isInitiator || false;
+	        this.channelEvents = channelEvents;
+	        this.fileShareProgress = fileShareProgress;
+	        this.peerConnection = new RTCPeerConnection(this.CONFIG);
+	        this.peerConnection.onicecandidate = (e) => {
+	            this._console("new ice-candidates");
+	            this._console(JSON.stringify(this.peerConnection.localDescription));
+	            onicecandidate && onicecandidate(this.peerConnection.localDescription);
+	        };
+	        this.peerConnection.ontrack = (e) => {
+	            this._console("Tracks detected");
+	            this.streams.remote.video = e.streams[0];
+	            ontrack && ontrack(e.streams[0]);
+	        };
+	        if (this.isInitiator) {
+	            this.dataChannels[this.CHANNELS.DEFAULT_MSG_CHANNEL] =
+	                this.peerConnection.createDataChannel(this.CHANNELS.DEFAULT_MSG_CHANNEL);
+	            this.dataChannels[this.CHANNELS.FILE_TRANSFER] =
+	                this.peerConnection.createDataChannel(this.CHANNELS.FILE_TRANSFER);
+	            this._bindChannelEvents(this.CHANNELS.DEFAULT_MSG_CHANNEL);
+	            this._bindChannelEvents(this.CHANNELS.FILE_TRANSFER);
+	            // creating SDP
+	            this.peerConnection
+	                .createOffer()
+	                .then((o) => this.peerConnection.setLocalDescription(o));
+	        }
+	        else {
+	            this.peerConnection.ondatachannel = (e) => {
+	                this.dataChannels[e.channel.label] = e.channel;
+	                this._bindChannelEvents(e.channel.label);
+	            };
+	        }
+	    }
+	    _handleMessage(data) {
+	        this.messages.push(JSON.parse(data));
+	        this._console(this.messages);
+	    }
+	    _handleFileTransfer(data) {
+	        // there needs to be progress cb here as well
+	        // this.fileTransferProtocol.isProcessing = true;
+	        // AY make use of this
+	        const dataObj = JSON.parse(data);
+	        switch (dataObj.cmd) {
+	            case "filemeta":
+	                this._console("File meta data", dataObj.data);
+	                this.fileTransferProtocol.filesMeta = dataObj.data;
+	                break;
+	            case "filedata":
+	                this._console("filedata recevied");
+	                const fileData = this.fileTransferProtocol.filesMeta[dataObj.filename];
+	                const buffer = this._base64ToArrayBuffer(dataObj.data);
+	                if (fileData) {
+	                    // @ts-ignore
+	                    fileData.buffer.push(buffer);
+	                    fileData.progress.receive += buffer.byteLength;
+	                    if (fileData.size === fileData.progress.receive) {
+	                        const newBlob = new Blob(fileData.buffer, { type: fileData.type });
+	                        const link = document.createElement("a");
+	                        link.download = fileData.name;
+	                        link.href = window.URL.createObjectURL(newBlob);
+	                        document.body.appendChild(link);
+	                        link.click();
+	                        document.body.removeChild(link);
+	                    }
+	                }
+	                this.fileShareProgress &&
+	                    this.fileShareProgress({
+	                        files: Object.keys(this.fileTransferProtocol.filesMeta).reduce((acc, key) => {
+	                            acc[key] = Object.assign(Object.assign({}, this.fileTransferProtocol.filesMeta[key]), { buffer: [] });
+	                            return acc;
+	                        }, {}),
+	                    });
+	                // console.log({ fileData });
+	                // this._console(this._base64ToArrayBuffer(dataObj.data));
+	                break;
+	            default:
+	                this._console("un-handeled filetransfer cmd", dataObj.cmd);
+	                break;
+	        }
+	    }
+	    _bindChannelEvents(channel) {
+	        this.dataChannels[channel].onmessage = (e) => {
+	            var _a;
+	            this._console(`onmessage [${channel}] : `, e.data);
+	            switch (channel) {
+	                case this.CHANNELS.DEFAULT_MSG_CHANNEL:
+	                    this._handleMessage(e.data);
+	                    (_a = this.channelEvents) === null || _a === void 0 ? void 0 : _a.onmessage(this.messages);
+	                    break;
+	                case this.CHANNELS.FILE_TRANSFER:
+	                    this._handleFileTransfer(e.data);
+	                    break;
+	                default:
+	                    this._console("un-handeled channel", channel);
+	                    break;
+	            }
+	        };
+	        this.dataChannels[channel].onopen = (e) => {
+	            var _a;
+	            this._console(`channel-open : ${channel}`);
+	            (_a = this.channelEvents) === null || _a === void 0 ? void 0 : _a.onopen(e, channel);
+	        };
+	        this.dataChannels[channel].onclose = (e) => {
+	            var _a;
+	            this._console(`channel-close : ${channel}`);
+	            (_a = this.channelEvents) === null || _a === void 0 ? void 0 : _a.onclose(e, channel);
+	        };
+	    }
+	    _console(...args) {
+	        switch (this.LOG_LEVEL) {
+	            case "DEBUG":
+	                console.log(...args);
+	                break;
+	            case "PROD":
+	                console.warn("Debug level : " + this.LOG_LEVEL);
+	                break;
+	            default:
+	                console.warn("Debug level : " + this.LOG_LEVEL);
+	                break;
+	        }
+	    }
+	    setPeer(offer) {
+	        return __awaiter(this, void 0, void 0, function* () {
+	            // this is setting remote description
+	            yield this.peerConnection.setRemoteDescription(offer);
+	            this._console("set-remote-desc");
+	            if (!this.isInitiator) {
+	                this._console("self not-initiator creating answer");
+	                const sdp = yield this.createAnswer();
+	                this._console("answer created");
+	                return sdp;
+	            }
+	            return null;
+	        });
+	    }
+	    createAnswer() {
+	        return __awaiter(this, void 0, void 0, function* () {
+	            //create answer
+	            const sdp = yield this.peerConnection.createAnswer();
+	            yield this.peerConnection.setLocalDescription(sdp);
+	            return this.peerConnection.localDescription;
+	        });
+	    }
+	    sendMessage(msg, channel) {
+	        if (channel && !this.dataChannels[channel]) {
+	            console.error(`No such channel created : ${channel}`);
+	            return;
+	        }
+	        const msgObj = {
+	            message: msg,
+	            senderId: this.id,
+	            senderName: this.name,
+	            channel: channel || this.CHANNELS.DEFAULT_MSG_CHANNEL,
+	            time: new Date(),
+	        };
+	        this.messages.push(msgObj);
+	        this.dataChannels[channel || this.CHANNELS.DEFAULT_MSG_CHANNEL].send(JSON.stringify(msgObj));
+	        return this.messages;
+	    }
+	    getMediaDevicesVideo() {
+	        return __awaiter(this, void 0, void 0, function* () {
+	            // renegotiate via webrtc itself
+	            const videoStream = yield navigator.mediaDevices.getUserMedia({
+	                video: true,
+	                // audio: true,
+	            });
+	            this.streams.local.video = videoStream;
+	            this.streams.local.video.getTracks().forEach((track) => {
+	                console.log("Track", track);
+	                this.peerConnection.addTrack(track, this.streams.local.video || videoStream);
+	            });
+	            return videoStream;
+	        });
+	    }
+	    _arrayBufferToBase64(buffer) {
+	        let binary = "";
+	        const bytes = new Uint8Array(buffer);
+	        const len = bytes.byteLength;
+	        for (let i = 0; i < len; i++) {
+	            binary += String.fromCharCode(bytes[i]);
+	        }
+	        return window.btoa(binary);
+	    }
+	    _base64ToArrayBuffer(base64) {
+	        const binary_string = window.atob(base64);
+	        const len = binary_string.length;
+	        const bytes = new Uint8Array(len);
+	        for (let i = 0; i < len; i++) {
+	            bytes[i] = binary_string.charCodeAt(i);
+	        }
+	        return bytes.buffer;
+	    }
+	    _createFileMeta(files) {
+	        const fileMetaObj = {};
+	        for (let i = 0; i < files.length; i++) {
+	            const file = files[i];
+	            const fileMeta = {
+	                name: file.name,
+	                size: file.size,
+	                type: file.type,
+	                lastModified: file.lastModified,
+	                progress: { send: 0, receive: 0 },
+	            };
+	            fileMetaObj[file.name] = Object.assign(Object.assign({}, fileMeta), { buffer: [] });
+	        }
+	        return fileMetaObj;
+	    }
+	    sendFiles(files) {
+	        // prep send data about files
+	        const filesMeta = this._createFileMeta(files);
+	        this.dataChannels[this.CHANNELS.FILE_TRANSFER].send(JSON.stringify({ cmd: "filemeta", data: filesMeta }));
+	        this.fileTransferProtocol.filesMeta = filesMeta;
+	        // const file = files[0];
+	        for (let file of files) {
+	            // for now just sending the first file can send multiple files
+	            this._console(`File is ${[file.name, file.size, file.type, file.lastModified].join(" ")}`);
+	            const chunkSize = 8192;
+	            let offset = 0;
+	            const fileReader = new FileReader();
+	            fileReader.addEventListener("error", (error) => {
+	                this._console("Error reading file:", error);
+	                this.fileShareProgress && this.fileShareProgress({ error, files: {} });
+	            });
+	            fileReader.addEventListener("abort", (event) => {
+	                this._console("File reading aborted:", event);
+	                this.fileShareProgress &&
+	                    this.fileShareProgress({ error: event, files: {} });
+	            });
+	            fileReader.addEventListener("load", (e) => {
+	                this._console("FileRead.onload ", e);
+	                if (e.target && e.target.result instanceof ArrayBuffer) {
+	                    let packet = {
+	                        cmd: "filedata",
+	                        filename: file.name,
+	                        data: this._arrayBufferToBase64(e.target.result),
+	                    };
+	                    this.fileTransferProtocol.filesMeta[file.name].progress.send +=
+	                        e.target.result.byteLength;
+	                    this.fileShareProgress &&
+	                        this.fileShareProgress({
+	                            files: this.fileTransferProtocol.filesMeta,
+	                        });
+	                    // if (
+	                    //   this.dataChannels[this.CHANNELS.FILE_TRANSFER].bufferedAmount <
+	                    //   this.MAX_QUEUE_SIZE
+	                    // ) {
+	                    this.dataChannels[this.CHANNELS.FILE_TRANSFER].send(JSON.stringify(packet));
+	                    // }
+	                    offset += e.target.result.byteLength;
+	                    // sendProgress.value = offset;
+	                    // AY Set progress here for sender
+	                    if (offset < file.size) {
+	                        readSlice(offset);
+	                    }
+	                }
+	            });
+	            const readSlice = (offset) => {
+	                this._console("Slice Number: " + offset);
+	                const slice = file.slice(offset, offset + chunkSize);
+	                fileReader.readAsArrayBuffer(slice);
+	            };
+	            readSlice(0);
+	        }
+	    }
+	}
+	TunnelIO$1.TunnelIO = TunnelIO;
+
+	(function (exports) {
+		Object.defineProperty(exports, "__esModule", { value: true });
+		exports.TunnelIO = void 0;
+		const TunnelIO_1 = TunnelIO$1;
+		Object.defineProperty(exports, "TunnelIO", { enumerable: true, get: function () { return TunnelIO_1.TunnelIO; } }); 
+	} (src));
+
+	var index = /*@__PURE__*/getDefaultExportFromCjs(src);
+
+	return index;
+
+}));

@@ -4,7 +4,7 @@ import typescript from "@rollup/plugin-typescript";
 import terser from "@rollup/plugin-terser";
 
 export default {
-  input: "dist/index.js", // Your entry point
+  input: "dist/src/index.js", // Your entry point
   output: {
     file: "dist/bundle.js",
     format: "umd", // Universal Module Definition, works as amd, cjs and iife all in one
@@ -14,6 +14,6 @@ export default {
     resolve(), // Helps Rollup find modules in node_modules
     commonjs(), // Converts CommonJS modules to ES6
     // typescript(), // Converts TypeScript to JavaScript
-    terser(), // Minifies the bundle
+    // terser(), // Minifies the bundle
   ],
 };

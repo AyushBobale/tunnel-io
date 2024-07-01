@@ -2,8 +2,8 @@
   "name": "@ayushbobale/tunnel-io",
   "version": "1.1.1",
   "description": "",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "homepage": "https://github.com/AyushBobale/tunnel-io/blob/main/README.md",
   "bugs": {
     "url": "https://github.com/AyushBobale/tunnel-io/issues",

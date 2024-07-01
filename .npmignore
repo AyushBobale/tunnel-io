@@ -1,0 +1,9 @@
+tests/*
+cypress/*
+dist/bundle.js
+dist/cypress/*
+.gitignore
+cypress.*
+rollup.*
+*.tgz
+tsconfig.json

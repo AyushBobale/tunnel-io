@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Testing Tunnel IO</title>
+    <script src="../dist/bundle.js"></script>
+  </head>
+  <body>
+    <script>
+      // Check if TunnelIO is available globally
+      if (typeof TunnelIO !== "undefined") {
+        console.log("tunnel-io found ", TunnelIO);
+
+        // Assuming TunnelIO is accessed through a getter
+        var TunnelIOConstructor = TunnelIO.TunnelIO;
+        console.log("TunnelIO Constructor:", TunnelIOConstructor);
+
+        // Example instantiation
+        var tunnelInstance = new TunnelIOConstructor();
+        console.log("Instance:", tunnelInstance);
+      } else {
+        console.error("TunnelIO not found or not loaded correctly.");
+      }
+    </script>
+    <h1>Testing TunnelIO</h1>
+  </body>
+</html>
