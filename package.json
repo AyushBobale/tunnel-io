@@ -11,13 +11,32 @@
   },
   "scripts": {
     "dev": "nodemon --watch src --ext js,json,ts --exec tsc --declaration",
-    "build": "tsc --declaration",
-    "package": "npm run build && npm pack"
+    "bundle": "rollup -c",
+    "build": "tsc --declaration && npm run bundle",
+    "package": "npm run build && npm pack",
+    "serve": "npx serve . ",
+    "test": "npx cypress open",
+    "test:build": "npm run build && run test"
   },
+  "keywords": [
+    "webrtc",
+    "webrtc-javascript-library",
+    "webrtc-experiments",
+    "filetransfer",
+    "videocall",
+    "webrtc-libraries",
+    "webrtc-typescript-library"
+  ],
   "author": "ayushbobale",
   "license": "BSD-2-Clause",
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^26.0.1",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "cypress": "^13.12.0",
     "nodemon": "^3.1.4",
+    "rollup": "^4.18.0",
     "ts-node": "^10.9.2"
   }
 }

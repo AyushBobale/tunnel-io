@@ -1,3 +1,5 @@
+# bundle js
+!dist/bundle.js
 # Logs
 logs
 *.log
